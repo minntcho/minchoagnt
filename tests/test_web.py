@@ -10,8 +10,8 @@ from minchoagnt.web import create_workbench_handler
 
 class WebServerContext:
     def __enter__(self):
-        handler = create_workbench_handler()
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        self.handler = create_workbench_handler()
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), self.handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.host, self.port = self.server.server_address
@@ -21,6 +21,7 @@ class WebServerContext:
         self.server.shutdown()
         self.thread.join(timeout=5)
         self.server.server_close()
+        self.handler.workbench.close()
 
     def request(self, method, path, body=None, headers=None):
         conn = http.client.HTTPConnection(self.host, self.port, timeout=5)
@@ -51,6 +52,8 @@ class ReviewWorkbenchWebTests(unittest.TestCase):
         self.assertIn("! Apply", html)
         self.assertIn("ollama", html)
         self.assertIn("Ollama Model", html)
+        self.assertIn("? Verify", html)
+        self.assertIn("Expect Target", html)
 
     def test_review_and_apply_api_flow(self):
         with WebServerContext() as server:
@@ -79,6 +82,58 @@ class ReviewWorkbenchWebTests(unittest.TestCase):
         self.assertEqual(apply_payload["apply_result"]["memory_saved"], 1)
         self.assertEqual(apply_payload["diff"]["user"]["added"], ["I prefer Korean summaries."])
         self.assertEqual(apply_payload["node_status"]["StateDiff"], "success")
+
+    def test_expect_api_checks_applied_run(self):
+        with WebServerContext() as server:
+            _, review_data = server.post_json(
+                "/api/review",
+                {
+                    "message": "remember: I prefer Korean summaries.",
+                    "reviewer": "regex",
+                },
+            )
+            run_id = json.loads(review_data)["run_id"]
+            server.post_json("/api/apply", {"run_id": run_id})
+
+            expect_response, expect_data = server.post_json(
+                "/api/expect",
+                {
+                    "run_id": run_id,
+                    "target": "user",
+                    "contains": "Korean summaries",
+                },
+            )
+            expect_payload = json.loads(expect_data)
+
+        self.assertEqual(expect_response.status, 200)
+        self.assertEqual(
+            expect_payload["check_result"],
+            {
+                "target": "user",
+                "contains": "Korean summaries",
+                "passed": True,
+                "message": "matched user memory",
+            },
+        )
+        self.assertIn(
+            {"step": "expect", "status": "success", "message": "? verify passed"},
+            expect_payload["events"],
+        )
+
+    def test_expect_api_rejects_empty_contains(self):
+        with WebServerContext() as server:
+            response, data = server.post_json(
+                "/api/expect",
+                {
+                    "run_id": "run_404",
+                    "target": "user",
+                    "contains": "",
+                },
+            )
+
+        payload = json.loads(data)
+        self.assertEqual(response.status, 400)
+        self.assertEqual(payload["error"], "contains cannot be empty")
 
     def test_review_api_rejects_malformed_json(self):
         with WebServerContext() as server:

@@ -67,6 +67,22 @@ class ApplyResult:
 
 
 @dataclass(frozen=True)
+class CheckResult:
+    target: str = ""
+    contains: str = ""
+    passed: bool = False
+    message: str = "not run"
+
+    def to_dict(self) -> dict[str, str | bool]:
+        return {
+            "target": self.target,
+            "contains": self.contains,
+            "passed": self.passed,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
 class ListDiff:
     added: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
@@ -111,6 +127,7 @@ class WorkbenchRun:
     review_plan: ReviewPlan
     apply_result: ApplyResult = field(default_factory=ApplyResult)
     diff: WorkbenchDiff = field(default_factory=WorkbenchDiff)
+    check_result: CheckResult = field(default_factory=CheckResult)
     events: list[WorkbenchEvent] = field(default_factory=list)
     node_status: dict[str, NodeStatus] = field(default_factory=dict)
 
@@ -122,6 +139,7 @@ class WorkbenchRun:
             "review_plan": self.review_plan.to_dict(),
             "apply_result": self.apply_result.to_dict(),
             "diff": self.diff.to_dict(),
+            "check_result": self.check_result.to_dict(),
             "events": [event.to_dict() for event in self.events],
             "node_status": dict(self.node_status),
         }
@@ -306,6 +324,37 @@ class ReviewWorkbench:
             },
         )
 
+    def expect(self, run: WorkbenchRun, target: str, contains: str) -> WorkbenchRun:
+        target = target.strip()
+        needle = contains.strip()
+        if target not in {"user", "memory", "skills", "review_plan"}:
+            raise ValueError("target must be user, memory, skills, or review_plan.")
+        if not needle:
+            raise ValueError("contains cannot be empty.")
+        haystack = _expectation_values(run, target)
+        passed = any(needle in value for value in haystack)
+        target_label = _target_label(target)
+        message = (
+            f"matched {target_label}"
+            if passed
+            else f"no match in {target_label}"
+        )
+        result = CheckResult(
+            target=target,
+            contains=needle,
+            passed=passed,
+            message=message,
+        )
+        events = list(run.events)
+        events.append(
+            WorkbenchEvent(
+                "expect",
+                "success" if passed else "no-op",
+                "? verify passed" if passed else "? verify failed",
+            )
+        )
+        return replace(run, check_result=result, events=events)
+
     @staticmethod
     def _reviewer_for(reviewer_type: str, config: dict[str, Any]) -> ReviewEngine:
         if reviewer_type == "regex":
@@ -357,3 +406,23 @@ def _state_status(result: ApplyResult) -> NodeStatus:
     if result.memory_saved or result.skills_created:
         return "success"
     return "no-op"
+
+
+def _expectation_values(run: WorkbenchRun, target: str) -> list[str]:
+    if target == "user":
+        return run.diff.user.added + run.diff.user.unchanged
+    if target == "memory":
+        return run.diff.memory.added + run.diff.memory.unchanged
+    if target == "skills":
+        return run.diff.skills.created + run.diff.skills.unchanged
+    return [run.review_plan.to_json()]
+
+
+def _target_label(target: str) -> str:
+    if target == "user":
+        return "user memory"
+    if target == "memory":
+        return "memory"
+    if target == "skills":
+        return "skills"
+    return "review plan"

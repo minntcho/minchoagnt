@@ -164,6 +164,32 @@ class ReviewWorkbenchTests(unittest.TestCase):
             self.assertEqual(run.reviewer.to_dict()["last_error"], "connection refused")
             self.assertEqual(run.node_status["ReviewPlan"], "no-op")
 
+    def test_expect_passes_when_user_memory_contains_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workbench = ReviewWorkbench(Path(tmp), reviewer_type="regex")
+            run = workbench.review("remember: I prefer Korean summaries.")
+            applied = workbench.apply(run)
+
+            checked = workbench.expect(applied, target="user", contains="Korean summaries")
+
+            self.assertTrue(checked.check_result.passed)
+            self.assertEqual(checked.check_result.target, "user")
+            self.assertEqual(checked.check_result.contains, "Korean summaries")
+            self.assertEqual(checked.check_result.message, "matched user memory")
+            self.assertIn("? verify passed", [event.message for event in checked.events])
+
+    def test_expect_fails_when_text_is_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workbench = ReviewWorkbench(Path(tmp), reviewer_type="regex")
+            run = workbench.review("remember: I prefer Korean summaries.")
+            applied = workbench.apply(run)
+
+            checked = workbench.expect(applied, target="user", contains="Spanish summaries")
+
+            self.assertFalse(checked.check_result.passed)
+            self.assertEqual(checked.check_result.message, "no match in user memory")
+            self.assertIn("? verify failed", [event.message for event in checked.events])
+
 
 if __name__ == "__main__":
     unittest.main()

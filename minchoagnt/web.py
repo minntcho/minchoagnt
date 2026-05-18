@@ -302,6 +302,22 @@ WORKBENCH_HTML = """<!doctype html>
           <button id="review">~ Review</button>
           <button id="apply" disabled>! Apply</button>
         </div>
+        <div>
+          <label for="expect-target">Expect Target</label>
+          <select id="expect-target">
+            <option value="user">user memory</option>
+            <option value="memory">memory</option>
+            <option value="skills">skills</option>
+            <option value="review_plan">review plan</option>
+          </select>
+        </div>
+        <div>
+          <label for="expect-contains">Expect Contains</label>
+          <input id="expect-contains" value="Korean summaries">
+        </div>
+        <div class="actions">
+          <button id="expect" disabled>? Verify</button>
+        </div>
         <div class="target">
           <span>? Verify</span>
           <strong id="verify">pending</strong>
@@ -351,7 +367,8 @@ WORKBENCH_HTML = """<!doctype html>
         graph.appendChild(button);
       });
       document.getElementById("apply").disabled = !run.run_id;
-      document.getElementById("verify").textContent = run.node_status.StateDiff || "pending";
+      document.getElementById("expect").disabled = !run.run_id;
+      document.getElementById("verify").textContent = verifyLabel(run);
       document.getElementById("detail-title").textContent = selectedNode;
       document.getElementById("detail").textContent = JSON.stringify(detailFor(run, selectedNode), null, 2);
       const log = document.getElementById("log");
@@ -367,7 +384,14 @@ WORKBENCH_HTML = """<!doctype html>
       if (node === "UserMessage") return run.input;
       if (node === "ReviewEngine") return run.reviewer;
       if (node === "ReviewPlan") return run.review_plan;
-      return { apply_result: run.apply_result, diff: run.diff };
+      return { apply_result: run.apply_result, diff: run.diff, check_result: run.check_result };
+    }
+
+    function verifyLabel(run) {
+      if (run.check_result && run.check_result.message !== "not run") {
+        return run.check_result.passed ? "pass" : "fail";
+      }
+      return run.node_status.StateDiff || "pending";
     }
 
     async function postJSON(path, payload) {
@@ -411,6 +435,23 @@ WORKBENCH_HTML = """<!doctype html>
         setStatus(error.message);
       }
     });
+
+    document.getElementById("expect").addEventListener("click", async () => {
+      if (!currentRun) return;
+      try {
+        setStatus("Verifying");
+        selectedNode = "StateDiff";
+        const run = await postJSON("/api/expect", {
+          run_id: currentRun.run_id,
+          target: document.getElementById("expect-target").value,
+          contains: document.getElementById("expect-contains").value,
+        });
+        render(run);
+        setStatus(run.check_result.passed ? "Verify passed" : "Verify failed");
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
   </script>
 </body>
 </html>
@@ -439,6 +480,9 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/apply":
             self._handle_apply(payload)
+            return
+        if self.path == "/api/expect":
+            self._handle_expect(payload)
             return
         self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
@@ -486,6 +530,31 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
         applied = self.workbench.apply(run)
         self.runs[run_id] = applied
         self._send_json(HTTPStatus.OK, applied.to_dict())
+
+    def _handle_expect(self, payload: dict[str, Any]) -> None:
+        run_id = payload.get("run_id")
+        target = payload.get("target")
+        contains = payload.get("contains")
+        if not isinstance(run_id, str):
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "run_id is required"})
+            return
+        if not isinstance(target, str):
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "target is required"})
+            return
+        if not isinstance(contains, str) or not contains.strip():
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "contains cannot be empty"})
+            return
+        run = self.runs.get(run_id)
+        if run is None:
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
+            return
+        try:
+            checked = self.workbench.expect(run, target=target, contains=contains)
+        except ValueError as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        self.runs[run_id] = checked
+        self._send_json(HTTPStatus.OK, checked.to_dict())
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
