@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from minchoagnt.memory import MemoryStore
-from minchoagnt.review import ReviewEngine, ReviewPlan
+from minchoagnt.review import RegexReviewEngine, ReviewEngine, ReviewPlan
 from minchoagnt.sessions import SessionDB
 from minchoagnt.skills import SkillExistsError, SkillStore
 
@@ -31,13 +31,14 @@ class MiniAgent:
         memory_interval: int = 10,
         skill_interval: int = 10,
         session_id: str | None = None,
+        review_engine: ReviewEngine | None = None,
     ):
         self.home = Path(home)
         self.home.mkdir(parents=True, exist_ok=True)
         self.memory = MemoryStore(self.home).load()
         self.skills = SkillStore(self.home)
         self.sessions = SessionDB(self.home / "state.db")
-        self.review_engine = ReviewEngine()
+        self.review_engine = review_engine if review_engine is not None else RegexReviewEngine()
         self.session_id = session_id or self.sessions.create_session(source="cli")
         self.memory_interval = max(1, memory_interval)
         self.skill_interval = max(1, skill_interval)
