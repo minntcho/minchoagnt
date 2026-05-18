@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 from typing import Any, Protocol, Sequence
 
-from minchoagnt.review import ReviewPlan, ReviewPlanValidationError
+from minchoagnt.review import ReviewPlan
 from minchoagnt.sessions import Message
 
 
@@ -74,7 +75,7 @@ class OllamaReviewEngine:
             )
             plan = ReviewPlan.from_json(self._content_from_response(response))
             return self._filter_plan(plan, review_memory, review_skills)
-        except (Exception, ReviewPlanValidationError) as exc:
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
             self.last_error = str(exc)
             return ReviewPlan()
 
