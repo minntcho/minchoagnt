@@ -37,6 +37,9 @@ Start Ollama locally, pull a model, then select the Ollama reviewer from the CLI
 python -m minchoagnt say "remember: I prefer Korean summaries." --memory-interval 1 --reviewer ollama --model qwen2.5:7b
 ```
 
+The Review Workbench also includes an `ollama` reviewer option with model, base
+URL, and timeout fields for local model experiments.
+
 You can also inject `OllamaReviewEngine` directly when constructing an agent.
 
 ```python
