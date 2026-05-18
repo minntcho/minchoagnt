@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Protocol, Sequence
 
 from minchoagnt.sessions import Message
 
@@ -25,7 +26,19 @@ class ReviewPlan:
     skill_creations: list[SkillCreation] = field(default_factory=list)
 
 
-class ReviewEngine:
+class ReviewEngine(Protocol):
+    """Contract implemented by heuristic, fake, and future LLM reviewers."""
+
+    def review(
+        self,
+        messages: Sequence[Message],
+        review_memory: bool = True,
+        review_skills: bool = True,
+    ) -> ReviewPlan:
+        """Return memory and skill candidates extracted from conversation messages."""
+
+
+class RegexReviewEngine:
     """Heuristic reviewer that mimics Hermes' background reflection slot."""
 
     _remember = re.compile(r"\bremember(?:\s+that)?\s*[:\-]?\s*(.+)$", re.IGNORECASE)
@@ -36,7 +49,7 @@ class ReviewEngine:
 
     def review(
         self,
-        messages: list[Message],
+        messages: Sequence[Message],
         review_memory: bool = True,
         review_skills: bool = True,
     ) -> ReviewPlan:

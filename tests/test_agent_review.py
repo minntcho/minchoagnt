@@ -4,10 +4,44 @@ from pathlib import Path
 
 from minchoagnt.agent import MiniAgent
 from minchoagnt.memory import MemoryStore
+from minchoagnt.review import MemoryAddition, ReviewPlan
 from minchoagnt.skills import SkillStore
 
 
+class FakeReviewEngine:
+    def __init__(self):
+        self.calls = []
+
+    def review(self, messages, review_memory=True, review_skills=True):
+        self.calls.append((messages, review_memory, review_skills))
+        return ReviewPlan(
+            memory_additions=[
+                MemoryAddition(
+                    target="user",
+                    content="사용자는 한국어 요약을 선호한다.",
+                )
+            ],
+            skill_creations=[],
+        )
+
+
 class MiniAgentReviewTests(unittest.TestCase):
+    def test_review_engine_can_be_injected_for_deterministic_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            reviewer = FakeReviewEngine()
+            agent = MiniAgent(home, memory_interval=1, review_engine=reviewer)
+
+            result = agent.chat("this text does not match regex review rules")
+
+            self.assertEqual(result.review.memory_saved, 1)
+            self.assertEqual(len(reviewer.calls), 1)
+            self.assertEqual(reviewer.calls[0][1:], (True, False))
+
+            memory = MemoryStore(home)
+            memory.load()
+            self.assertEqual(memory.entries("user"), ["사용자는 한국어 요약을 선호한다."])
+
     def test_memory_review_runs_after_configured_user_turns(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
