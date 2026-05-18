@@ -2,6 +2,7 @@
 
 from minchoagnt.agent import ChatResult, MiniAgent, ReviewSummary
 from minchoagnt.memory import MemoryStore
+from minchoagnt.ollama import OllamaHTTPClient, OllamaReviewEngine
 from minchoagnt.review import (
     RegexReviewEngine,
     ReviewEngine,
@@ -14,6 +15,8 @@ __all__ = [
     "ChatResult",
     "MemoryStore",
     "MiniAgent",
+    "OllamaHTTPClient",
+    "OllamaReviewEngine",
     "RegexReviewEngine",
     "ReviewEngine",
     "ReviewPlan",
