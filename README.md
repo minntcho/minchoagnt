@@ -58,3 +58,7 @@ an empty plan and records the failure in `OllamaReviewEngine.last_error`.
 ```powershell
 python -m unittest discover -s tests -v
 ```
+
+## Design Docs
+
+- [Review Workbench MVP](docs/superpowers/specs/2026-05-18-review-workbench-mvp-design.md)
