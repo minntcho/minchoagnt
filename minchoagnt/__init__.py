@@ -10,6 +10,7 @@ from minchoagnt.review import (
     ReviewPlanValidationError,
 )
 from minchoagnt.skills import SkillStore
+from minchoagnt.workbench import ReviewWorkbench, WorkbenchRun
 
 __all__ = [
     "ChatResult",
@@ -22,5 +23,7 @@ __all__ = [
     "ReviewPlan",
     "ReviewPlanValidationError",
     "ReviewSummary",
+    "ReviewWorkbench",
     "SkillStore",
+    "WorkbenchRun",
 ]
