@@ -23,7 +23,7 @@ class MemoryAddition:
     evidence: str | None = None
 
     def __post_init__(self) -> None:
-        target = self.target.strip()
+        target = _required_text(self.target, "memory target")
         if target not in VALID_MEMORY_TARGETS:
             raise ReviewPlanValidationError(
                 f"memory target must be one of {sorted(VALID_MEMORY_TARGETS)}, got {self.target!r}."

@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from minchoagnt.review import ReviewPlan, ReviewPlanValidationError
+from minchoagnt.review import MemoryAddition, ReviewPlan, ReviewPlanValidationError
 
 
 class ReviewPlanSchemaTests(unittest.TestCase):
@@ -61,6 +61,10 @@ class ReviewPlanSchemaTests(unittest.TestCase):
                     "skill_creations": [],
                 }
             )
+
+    def test_rejects_non_string_memory_target_from_direct_constructor(self):
+        with self.assertRaisesRegex(ReviewPlanValidationError, "memory target"):
+            MemoryAddition(target=123, content="valid content")
 
     def test_rejects_empty_content(self):
         with self.assertRaisesRegex(ReviewPlanValidationError, "content"):

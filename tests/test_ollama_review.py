@@ -110,6 +110,13 @@ class OllamaReviewEngineTests(unittest.TestCase):
         self.assertEqual(plan.skill_creations, [])
         self.assertIn("ollama timed out", engine.last_error)
 
+    def test_does_not_swallow_unexpected_programming_errors(self):
+        client = FakeOllamaClient(error=RuntimeError("programmer mistake"))
+        engine = OllamaReviewEngine(model="qwen2.5:7b", client=client)
+
+        with self.assertRaisesRegex(RuntimeError, "programmer mistake"):
+            engine.review([user_message("anything")])
+
     def test_returns_empty_plan_when_model_returns_invalid_schema(self):
         client = FakeOllamaClient(
             response={
