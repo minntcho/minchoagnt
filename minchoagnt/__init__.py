@@ -2,7 +2,12 @@
 
 from minchoagnt.agent import ChatResult, MiniAgent, ReviewSummary
 from minchoagnt.memory import MemoryStore
-from minchoagnt.review import RegexReviewEngine, ReviewEngine, ReviewPlan
+from minchoagnt.review import (
+    RegexReviewEngine,
+    ReviewEngine,
+    ReviewPlan,
+    ReviewPlanValidationError,
+)
 from minchoagnt.skills import SkillStore
 
 __all__ = [
@@ -12,6 +17,7 @@ __all__ = [
     "RegexReviewEngine",
     "ReviewEngine",
     "ReviewPlan",
+    "ReviewPlanValidationError",
     "ReviewSummary",
     "SkillStore",
 ]
