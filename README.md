@@ -38,7 +38,8 @@ python -m minchoagnt say "remember: I prefer Korean summaries." --memory-interva
 ```
 
 The Review Workbench also includes an `ollama` reviewer option with model, base
-URL, and timeout fields for local model experiments.
+URL, and timeout fields for local model experiments. Its `? Verify` controls can
+run simple contains checks against ReviewPlan output, memory diffs, or skill diffs.
 
 You can also inject `OllamaReviewEngine` directly when constructing an agent.
 
