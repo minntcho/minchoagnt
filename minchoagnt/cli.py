@@ -9,6 +9,7 @@ from minchoagnt.memory import MemoryStore
 from minchoagnt.ollama import OllamaReviewEngine
 from minchoagnt.sessions import SessionDB
 from minchoagnt.skills import SkillStore
+from minchoagnt.web import serve_workbench
 
 
 def default_home() -> Path:
@@ -58,6 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
     search = sub.add_parser("search", help="Search session messages.")
     search.add_argument("query")
 
+    workbench = sub.add_parser("workbench", help="Start the local Review Workbench.")
+    workbench.add_argument("--host", default="127.0.0.1")
+    workbench.add_argument("--port", type=int, default=8000)
+
     return parser
 
 
@@ -105,6 +110,10 @@ def main(argv: list[str] | None = None) -> int:
         db = SessionDB(home / "state.db")
         for message in db.search_messages(args.query):
             print(f"{message.session_id} {message.role}: {message.content}")
+        return 0
+
+    if args.command == "workbench":
+        serve_workbench(host=args.host, port=args.port)
         return 0
 
     return 1
