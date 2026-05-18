@@ -6,6 +6,7 @@ from pathlib import Path
 
 from minchoagnt.agent import MiniAgent
 from minchoagnt.memory import MemoryStore
+from minchoagnt.ollama import OllamaReviewEngine
 from minchoagnt.sessions import SessionDB
 from minchoagnt.skills import SkillStore
 
@@ -27,6 +28,19 @@ def build_parser() -> argparse.ArgumentParser:
     say.add_argument("--tool-iterations", type=int, default=0)
     say.add_argument("--memory-interval", type=int, default=10)
     say.add_argument("--skill-interval", type=int, default=10)
+    say.add_argument("--reviewer", choices=["regex", "ollama"], default="regex")
+    say.add_argument("--model", default="qwen2.5:7b", help="Ollama model for --reviewer ollama.")
+    say.add_argument(
+        "--ollama-url",
+        default="http://127.0.0.1:11434",
+        help="Ollama base URL for --reviewer ollama.",
+    )
+    say.add_argument(
+        "--timeout",
+        type=float,
+        default=30,
+        help="Ollama request timeout in seconds for --reviewer ollama.",
+    )
 
     sub.add_parser("context", help="Print the assembled prompt context.")
 
@@ -56,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
             home,
             memory_interval=args.memory_interval,
             skill_interval=args.skill_interval,
+            review_engine=review_engine_from_args(args),
         )
         result = agent.chat(args.text, tool_iterations=args.tool_iterations)
         print(result.response)
@@ -93,3 +108,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 1
+
+
+def review_engine_from_args(args):
+    if args.reviewer == "ollama":
+        return OllamaReviewEngine(
+            model=args.model,
+            base_url=args.ollama_url,
+            timeout_seconds=args.timeout,
+        )
+    return None

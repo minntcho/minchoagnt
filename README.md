@@ -9,13 +9,15 @@ This project demonstrates the mechanics behind an agent that can:
 - log conversations to SQLite
 - run a small review loop that promotes conversation facts into memory or skills
 
-It intentionally does not call an LLM yet. The review loop is heuristic so the core
-storage and orchestration pieces stay easy to inspect and test.
+The default review loop is heuristic so the core storage and orchestration pieces
+stay easy to inspect and test. An Ollama-backed reviewer is available when you
+want to experiment with a local LLM.
 
 ## Try It
 
 ```powershell
 python -m minchoagnt say "remember: I prefer Korean summaries." --memory-interval 1
+python -m minchoagnt say "remember: I prefer Korean summaries." --memory-interval 1 --reviewer ollama --model qwen2.5:7b
 python -m minchoagnt context
 python -m minchoagnt say "skill: release-checklist | run tests; inspect git status; push branch" --skill-interval 1 --tool-iterations 1
 python -m minchoagnt skills list
@@ -28,8 +30,13 @@ By default, local state is written to `.minchoagnt/` in the current directory. S
 
 ## Use Ollama As A Reviewer
 
-The Ollama adapter is library-only for now. Start Ollama locally, pull a model,
-then inject `OllamaReviewEngine` when constructing the agent.
+Start Ollama locally, pull a model, then select the Ollama reviewer from the CLI.
+
+```powershell
+python -m minchoagnt say "remember: I prefer Korean summaries." --memory-interval 1 --reviewer ollama --model qwen2.5:7b
+```
+
+You can also inject `OllamaReviewEngine` directly when constructing an agent.
 
 ```python
 from minchoagnt import MiniAgent, OllamaReviewEngine
