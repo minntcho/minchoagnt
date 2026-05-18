@@ -3,9 +3,10 @@ from __future__ import annotations
 import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Any, Literal, Sequence
 
 from minchoagnt.memory import MemoryErrorBase, MemoryStore
+from minchoagnt.ollama import OllamaReviewEngine
 from minchoagnt.review import RegexReviewEngine, ReviewEngine, ReviewPlan
 from minchoagnt.sessions import Message
 from minchoagnt.skills import SkillError, SkillExistsError, SkillStore
@@ -25,9 +26,10 @@ class WorkbenchInput:
 @dataclass(frozen=True)
 class WorkbenchReviewer:
     type: str
+    config: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, str]:
-        return {"type": self.type}
+    def to_dict(self) -> dict[str, Any]:
+        return {"type": self.type, **self.config}
 
 
 @dataclass(frozen=True)
@@ -153,11 +155,15 @@ class ReviewWorkbench:
         home: Path | str,
         reviewer_type: str = "regex",
         review_engine: ReviewEngine | None = None,
+        reviewer_config: dict[str, Any] | None = None,
     ):
         self.home = Path(home)
         self.home.mkdir(parents=True, exist_ok=True)
         self.reviewer_type = reviewer_type
-        self.review_engine = review_engine or self._reviewer_for(reviewer_type)
+        self.reviewer_config = dict(reviewer_config or {})
+        self.review_engine = review_engine or self._reviewer_for(
+            reviewer_type, self.reviewer_config
+        )
         self._run_count = 0
         self._sandbox: tempfile.TemporaryDirectory[str] | None = None
 
@@ -166,11 +172,22 @@ class ReviewWorkbench:
         cls,
         reviewer_type: str = "regex",
         review_engine: ReviewEngine | None = None,
+        reviewer_config: dict[str, Any] | None = None,
     ) -> "ReviewWorkbench":
         sandbox = tempfile.TemporaryDirectory(prefix="minchoagnt-workbench-")
-        workbench = cls(sandbox.name, reviewer_type=reviewer_type, review_engine=review_engine)
+        workbench = cls(
+            sandbox.name,
+            reviewer_type=reviewer_type,
+            review_engine=review_engine,
+            reviewer_config=reviewer_config,
+        )
         workbench._sandbox = sandbox
         return workbench
+
+    def close(self) -> None:
+        if self._sandbox is not None:
+            self._sandbox.cleanup()
+            self._sandbox = None
 
     def review(self, user_text: str) -> WorkbenchRun:
         self._run_count += 1
@@ -189,10 +206,17 @@ class ReviewWorkbench:
         ]
         plan = self.review_engine.review([message], review_memory=True, review_skills=True)
         events.append(WorkbenchEvent("review", "success", "review completed"))
+        reviewer_config = dict(self.reviewer_config)
+        last_error = getattr(self.review_engine, "last_error", None)
+        if last_error:
+            reviewer_config["last_error"] = str(last_error)
         return WorkbenchRun(
             run_id=run_id,
             input=WorkbenchInput(role="user", content=user_text),
-            reviewer=WorkbenchReviewer(type=self.reviewer_type),
+            reviewer=WorkbenchReviewer(
+                type=self.reviewer_type,
+                config=reviewer_config,
+            ),
             review_plan=plan,
             events=events,
             node_status={
@@ -283,12 +307,18 @@ class ReviewWorkbench:
         )
 
     @staticmethod
-    def _reviewer_for(reviewer_type: str) -> ReviewEngine:
+    def _reviewer_for(reviewer_type: str, config: dict[str, Any]) -> ReviewEngine:
         if reviewer_type == "regex":
             return RegexReviewEngine()
         if reviewer_type == "fake":
             return FakeReviewEngine()
-        raise ValueError("reviewer_type must be 'regex' or 'fake'.")
+        if reviewer_type == "ollama":
+            return OllamaReviewEngine(
+                model=str(config.get("model", "qwen2.5:7b")),
+                base_url=str(config.get("base_url", "http://127.0.0.1:11434")),
+                timeout_seconds=float(config.get("timeout_seconds", 30)),
+            )
+        raise ValueError("reviewer_type must be 'regex', 'fake', or 'ollama'.")
 
     def _memory_entries(self) -> dict[str, list[str]]:
         memory = MemoryStore(self.home).load()

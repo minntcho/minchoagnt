@@ -5,6 +5,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from minchoagnt.ollama import OllamaReviewEngine
 from minchoagnt.workbench import ReviewWorkbench, WorkbenchRun
 
 
@@ -37,7 +38,7 @@ WORKBENCH_HTML = """<!doctype html>
       background: var(--bg);
       color: var(--ink);
     }
-    button, textarea, select {
+    button, input, textarea, select {
       font: inherit;
     }
     .shell {
@@ -107,7 +108,7 @@ WORKBENCH_HTML = """<!doctype html>
       color: var(--ink);
       background: #fff;
     }
-    select {
+    input, select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -282,7 +283,20 @@ WORKBENCH_HTML = """<!doctype html>
           <select id="reviewer">
             <option value="regex">regex</option>
             <option value="fake">fake</option>
+            <option value="ollama">ollama</option>
           </select>
+        </div>
+        <div>
+          <label for="model">Ollama Model</label>
+          <input id="model" value="qwen2.5:7b">
+        </div>
+        <div>
+          <label for="base-url">Ollama Base URL</label>
+          <input id="base-url" value="http://127.0.0.1:11434">
+        </div>
+        <div>
+          <label for="timeout">Ollama Timeout</label>
+          <input id="timeout" type="number" min="0.1" step="0.1" value="30">
         </div>
         <div class="actions">
           <button id="review">~ Review</button>
@@ -374,6 +388,9 @@ WORKBENCH_HTML = """<!doctype html>
         const run = await postJSON("/api/review", {
           message: document.getElementById("message").value,
           reviewer: document.getElementById("reviewer").value,
+          model: document.getElementById("model").value,
+          base_url: document.getElementById("base-url").value,
+          timeout: Number(document.getElementById("timeout").value),
         });
         render(run);
         setStatus("Review ready");
@@ -434,11 +451,24 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(message, str) or not message.strip():
             self._send_json(HTTPStatus.BAD_REQUEST, {"error": "message is required"})
             return
-        if reviewer not in {"regex", "fake"}:
-            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "reviewer must be regex or fake"})
+        if reviewer not in {"regex", "fake", "ollama"}:
+            self._send_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "reviewer must be regex, fake, or ollama"},
+            )
             return
-        if reviewer != self.workbench.reviewer_type:
-            type(self).workbench = ReviewWorkbench.sandbox(reviewer_type=reviewer)
+        try:
+            reviewer_config, review_engine = self._reviewer_options(reviewer, payload)
+        except ValueError as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        if reviewer != self.workbench.reviewer_type or reviewer_config != self.workbench.reviewer_config:
+            self.workbench.close()
+            type(self).workbench = ReviewWorkbench.sandbox(
+                reviewer_type=reviewer,
+                review_engine=review_engine,
+                reviewer_config=reviewer_config,
+            )
             type(self).runs = {}
         run = self.workbench.review(message)
         self.runs[run.run_id] = run
@@ -467,6 +497,30 @@ class WorkbenchRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("invalid JSON")
         return payload
+
+    def _reviewer_options(
+        self,
+        reviewer: str,
+        payload: dict[str, Any],
+    ) -> tuple[dict[str, Any], object | None]:
+        if reviewer != "ollama":
+            return {}, None
+        model = _text_option(payload.get("model"), "qwen2.5:7b")
+        base_url = _text_option(payload.get("base_url"), "http://127.0.0.1:11434")
+        timeout_seconds = _timeout_option(payload.get("timeout"), 30)
+        config = {
+            "model": model,
+            "base_url": base_url,
+            "timeout_seconds": timeout_seconds,
+        }
+        return (
+            config,
+            OllamaReviewEngine(
+                model=model,
+                base_url=base_url,
+                timeout_seconds=timeout_seconds,
+            ),
+        )
 
     def _send(self, status: HTTPStatus, body: str, content_type: str) -> None:
         encoded = body.encode("utf-8")
@@ -502,3 +556,24 @@ def serve_workbench(host: str = "127.0.0.1", port: int = 8000) -> None:
         pass
     finally:
         server.server_close()
+
+
+def _text_option(value: Any, default: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ValueError("Ollama options must be strings")
+    cleaned = value.strip()
+    return cleaned or default
+
+
+def _timeout_option(value: Any, default: float) -> float:
+    if value is None:
+        return default
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("timeout must be a number") from exc
+    if timeout <= 0:
+        raise ValueError("timeout must be greater than 0")
+    return timeout

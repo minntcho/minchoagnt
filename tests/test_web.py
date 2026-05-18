@@ -3,6 +3,7 @@ import json
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 
 from minchoagnt.web import create_workbench_handler
 
@@ -48,6 +49,8 @@ class ReviewWorkbenchWebTests(unittest.TestCase):
         self.assertIn("Review Workbench", html)
         self.assertIn("~ Review", html)
         self.assertIn("! Apply", html)
+        self.assertIn("ollama", html)
+        self.assertIn("Ollama Model", html)
 
     def test_review_and_apply_api_flow(self):
         with WebServerContext() as server:
@@ -89,6 +92,68 @@ class ReviewWorkbenchWebTests(unittest.TestCase):
         payload = json.loads(data)
         self.assertEqual(response.status, 400)
         self.assertEqual(payload["error"], "invalid JSON")
+
+    def test_review_api_can_select_ollama_reviewer_with_config(self):
+        created = []
+
+        class FakeOllamaReviewEngine:
+            def __init__(self, model, base_url, timeout_seconds):
+                self.model = model
+                self.base_url = base_url
+                self.timeout_seconds = timeout_seconds
+                created.append((model, base_url, timeout_seconds))
+
+            def review(self, messages, review_memory=True, review_skills=True):
+                from minchoagnt.review import MemoryAddition, ReviewPlan
+
+                return ReviewPlan(
+                    memory_additions=[
+                        MemoryAddition(target="user", content="I prefer Korean summaries.")
+                    ],
+                    skill_creations=[],
+                )
+
+        with patch("minchoagnt.web.OllamaReviewEngine", FakeOllamaReviewEngine):
+            with WebServerContext() as server:
+                response, data = server.post_json(
+                    "/api/review",
+                    {
+                        "message": "remember: I prefer Korean summaries.",
+                        "reviewer": "ollama",
+                        "model": "qwen2.5:7b",
+                        "base_url": "http://127.0.0.1:11434",
+                        "timeout": 2.5,
+                    },
+                )
+
+        payload = json.loads(data)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(created, [("qwen2.5:7b", "http://127.0.0.1:11434", 2.5)])
+        self.assertEqual(
+            payload["reviewer"],
+            {
+                "type": "ollama",
+                "model": "qwen2.5:7b",
+                "base_url": "http://127.0.0.1:11434",
+                "timeout_seconds": 2.5,
+            },
+        )
+        self.assertEqual(payload["node_status"]["ReviewPlan"], "success")
+
+    def test_review_api_rejects_invalid_ollama_timeout(self):
+        with WebServerContext() as server:
+            response, data = server.post_json(
+                "/api/review",
+                {
+                    "message": "remember: I prefer Korean summaries.",
+                    "reviewer": "ollama",
+                    "timeout": 0,
+                },
+            )
+
+        payload = json.loads(data)
+        self.assertEqual(response.status, 400)
+        self.assertEqual(payload["error"], "timeout must be greater than 0")
 
 
 if __name__ == "__main__":

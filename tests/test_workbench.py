@@ -3,8 +3,23 @@ import unittest
 from pathlib import Path
 
 from minchoagnt.memory import MemoryStore
+from minchoagnt.review import ReviewPlan
 from minchoagnt.skills import SkillStore
 from minchoagnt.workbench import ReviewWorkbench
+
+
+class EmptyReviewEngine:
+    def review(self, messages, review_memory=True, review_skills=True):
+        return ReviewPlan()
+
+
+class FailingReviewEngine:
+    def __init__(self):
+        self.last_error = None
+
+    def review(self, messages, review_memory=True, review_skills=True):
+        self.last_error = "connection refused"
+        return ReviewPlan()
 
 
 class ReviewWorkbenchTests(unittest.TestCase):
@@ -109,6 +124,44 @@ class ReviewWorkbenchTests(unittest.TestCase):
             run = workbench.review("remember: I prefer Korean summaries.")
 
             self.assertEqual(run.review_plan.to_dict()["memory_additions"], [])
+            self.assertEqual(run.node_status["ReviewPlan"], "no-op")
+
+    def test_reviewer_metadata_includes_optional_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workbench = ReviewWorkbench(
+                Path(tmp),
+                reviewer_type="ollama",
+                review_engine=EmptyReviewEngine(),
+                reviewer_config={
+                    "model": "qwen2.5:7b",
+                    "base_url": "http://127.0.0.1:11434",
+                    "timeout_seconds": 2.5,
+                },
+            )
+
+            run = workbench.review("remember: I prefer Korean summaries.")
+
+            self.assertEqual(
+                run.reviewer.to_dict(),
+                {
+                    "type": "ollama",
+                    "model": "qwen2.5:7b",
+                    "base_url": "http://127.0.0.1:11434",
+                    "timeout_seconds": 2.5,
+                },
+            )
+
+    def test_reviewer_metadata_includes_last_error_when_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workbench = ReviewWorkbench(
+                Path(tmp),
+                reviewer_type="ollama",
+                review_engine=FailingReviewEngine(),
+            )
+
+            run = workbench.review("remember: I prefer Korean summaries.")
+
+            self.assertEqual(run.reviewer.to_dict()["last_error"], "connection refused")
             self.assertEqual(run.node_status["ReviewPlan"], "no-op")
 
 
