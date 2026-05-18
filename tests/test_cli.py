@@ -36,9 +36,18 @@ class FakeOllamaReviewEngine:
         self.timeout_seconds = timeout_seconds
 
 
+class FakeWorkbenchServer:
+    calls = []
+
+    @classmethod
+    def serve(cls, host, port):
+        cls.calls.append((host, port))
+
+
 class CLITests(unittest.TestCase):
     def setUp(self):
         FakeAgent.instances = []
+        FakeWorkbenchServer.calls = []
 
     def test_say_defaults_to_regex_reviewer(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -82,6 +91,22 @@ class CLITests(unittest.TestCase):
         self.assertEqual(engine.base_url, "http://127.0.0.1:11434")
         self.assertEqual(engine.timeout_seconds, 2.5)
         self.assertEqual(FakeAgent.instances[0].memory_interval, 1)
+
+    def test_workbench_command_starts_local_server(self):
+        with patch.object(cli, "serve_workbench", FakeWorkbenchServer.serve):
+            with redirect_stdout(io.StringIO()):
+                exit_code = cli.main(
+                    [
+                        "workbench",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        "9001",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(FakeWorkbenchServer.calls, [("127.0.0.1", 9001)])
 
 
 if __name__ == "__main__":

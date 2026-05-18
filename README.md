@@ -23,6 +23,7 @@ python -m minchoagnt say "skill: release-checklist | run tests; inspect git stat
 python -m minchoagnt skills list
 python -m minchoagnt skills view release-checklist
 python -m minchoagnt search Korean
+python -m minchoagnt workbench --host 127.0.0.1 --port 8000
 ```
 
 By default, local state is written to `.minchoagnt/` in the current directory. Set
